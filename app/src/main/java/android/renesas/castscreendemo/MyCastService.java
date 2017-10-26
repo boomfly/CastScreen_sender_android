@@ -16,8 +16,7 @@
 
 package android.renesas.castscreendemo;
 
- import android.app.ActivityOptions;
-import android.app.Notification;
+ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -32,15 +31,12 @@ import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.StrictMode;
-import android.text.TextUtils;
 import android.util.Log;
-import android.view.Display;
 import android.view.Surface;
 
 import java.io.IOException;
@@ -119,12 +115,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         @Override
         public void run() {
             drainEncoder();
-        }
-    };
-    private Runnable mShowMapsRunnable = new Runnable() {
-        @Override
-        public void run() {
-            onVirtualDisplayReady(mVirtualDisplay.getDisplay());
         }
     };
      private DisplayManager mDisplayManager;
@@ -274,51 +264,11 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     }
 
 
-
-    private void onVirtualDisplayReady(Display display) {
-        Log.w(TAG, "onVirtualDisplayReady: "+display.getName() );
-        if(TextUtils.equals(display.getName(), CAST_DISPLAY_NAME)){
-            if(getPresentationIntent()!=null &&
-                    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O){
-                Intent intent=getPresentationIntent();
-                Bundle bundle= ActivityOptions.makeBasic()
-                        .setLaunchDisplayId(display.getDisplayId())
-                        .toBundle();
-                //Bundle bundle=new Bundle();
-                Log.d(TAG, "starting "+intent.getPackage());
-                try{
-                    startActivity(intent, bundle);
-                } catch (Exception e){
-                    e.printStackTrace();
-                    stopScreenCapture();
-                }
-            }else {
-                Log.e(TAG, "onVirtualDisplayReady: ERROR]");
-            }
-        }
-        Log.w(TAG, "Presentation ready: id="+display.getDisplayId());
-    }
-
-
-
-
-
-
-
-     private Intent getPresentationIntent() {
-         //intent.setPackage("com.google.android.apps.maps");
-         Intent intent=getPackageManager().getLaunchIntentForPackage("com.google.android.apps.maps");
-         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-         return intent;
-     }
-
-
      private void prepareVideoEncoder() {
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         MediaFormat format = MediaFormat.createVideoFormat(mSelectedFormat, mSelectedWidth, mSelectedHeight);
         int frameRate = Config.DEFAULT_VIDEO_FPS;
 
-        // Set some required properties. The media codec may fail if these aren't defined.
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         format.setInteger(MediaFormat.KEY_BIT_RATE, mSelectedBitrate);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
@@ -327,7 +277,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); // 1 seconds between I-frames
 
-        // Create a MediaCodec encoder and configure it. Get a Surface we can use for recording into.
         try {
             if(mSelectedEncoderName==null){
                 Log.d(TAG, "prepareVideoEncoder: mSelectedEncoderName==null");
@@ -356,7 +305,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             int bufferIndex = mVideoEncoder.dequeueOutputBuffer(mVideoBufferInfo, 0);
 
             if (bufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                //Log.d(TAG, "drainEncoder: nothing available yet");
                 break;
             } else if (bufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 Log.d(TAG, "drainEncoder: INFO_OUTPUT_FORMAT_CHANGED");
@@ -454,6 +402,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             public void run() {
                 try {
                     InetAddress serverAddr = InetAddress.getByName(mReceiverIp);
+
                     mSocket = new Socket(serverAddr, Config.VIEWER_PORT);
                     mSocketOutputStream = mSocket.getOutputStream();
                     OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
