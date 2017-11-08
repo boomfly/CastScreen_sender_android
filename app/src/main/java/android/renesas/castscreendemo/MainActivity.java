@@ -457,12 +457,12 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             mReceiverTextView.setText(R.string.no_receiver);
         }
         if(isConnected){
-            updateStopwatch(true, true);
+            //updateStopwatch(true, true);
 
             mReceiverTextView.setBackgroundColor(
                     getColor(android.R.color.holo_green_light));
         } else {
-            updateStopwatch(false, true);
+            //updateStopwatch(false, true);
             mReceiverTextView.setBackgroundColor(
                     getColor(android.R.color.background_light));
         }
