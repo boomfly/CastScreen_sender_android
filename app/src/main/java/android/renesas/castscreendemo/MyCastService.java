@@ -48,9 +48,12 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Calendar;
 
 import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR;
+import static android.media.MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR;
 import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
+import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_FORMAT;
 
  public class MyCastService extends Service {
     private final String TAG = "CastService";
@@ -66,23 +69,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             "X-HEIGHT: %2$d\r\n" +
             "\r\n";
 
-    // 1280x720@25
-    private static final byte[] H264_PREDEFINED_HEADER_1280x720 = {
-            (byte)0x21, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
-            (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x01,
-            (byte)0x67, (byte)0x42, (byte)0x80, (byte)0x20, (byte)0xda, (byte)0x01, (byte)0x40, (byte)0x16,
-            (byte)0xe8, (byte)0x06, (byte)0xd0, (byte)0xa1, (byte)0x35, (byte)0x00, (byte)0x00, (byte)0x00,
-            (byte)0x01, (byte)0x68, (byte)0xce, (byte)0x06, (byte)0xe2, (byte)0x32, (byte)0x24, (byte)0x00,
-            (byte)0x00, (byte)0x7a, (byte)0x83, (byte)0x3d, (byte)0xae, (byte)0x37, (byte)0x00, (byte)0x00};
-
-    // 800x480@25
-    private static final byte[] H264_PREDEFINED_HEADER_800x480 = {
-            (byte)0x21, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00,
-            (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x01,
-            (byte)0x67, (byte)0x42, (byte)0x80, (byte)0x20, (byte)0xda, (byte)0x03, (byte)0x20, (byte)0xf6,
-            (byte)0x80, (byte)0x6d, (byte)0x0a, (byte)0x13, (byte)0x50, (byte)0x00, (byte)0x00, (byte)0x00,
-            (byte)0x01, (byte)0x68, (byte)0xce, (byte)0x06, (byte)0xe2, (byte)0x32, (byte)0x24, (byte)0x00,
-            (byte)0x00, (byte)0x7a, (byte)0x83, (byte)0x3d, (byte)0xae, (byte)0x37, (byte)0x00, (byte)0x00};
 
     private MediaProjectionManager mMediaProjectionManager;
     private String mReceiverIp;
@@ -103,7 +89,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     private ServerSocket mServerSocket;
     private Socket mSocket;
     private OutputStream mSocketOutputStream;
-    private IvfWriter mIvfWriter;
     private Handler mDrainHandler = new Handler();
     private Runnable mStartEncodingRunnable = new Runnable() {
         @Override
@@ -118,6 +103,10 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         }
     };
      private DisplayManager mDisplayManager;
+     private CircularBuffer mCircularBuffer;
+     private final Object mCircularBufferFence = new Object();
+     private final Object mCircularBufferChangeSizeFence= new Object();
+     private boolean mCanIncreaseBuffer;
 
      private class ServiceHandlerCallback implements Handler.Callback {
         @Override
@@ -244,13 +233,13 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         if(mMediaProjection==null) mMediaProjection = mMediaProjectionManager.getMediaProjection(mResultCode, mResultData);
         prepareVideoEncoder();
         Log.w(TAG, "startScreenCapture");
-        prepareVirtualDisplayMP();
+        prepareVirtualDisplay();
         showNotification();
         Log.w(TAG, "startScreenCapture: mDrainEncoderRunnable.run();" );
         mDrainEncoderRunnable.run();
 
     }
-    private void prepareVirtualDisplayMP(){
+    private void prepareVirtualDisplay(){
         Log.d(TAG, "mResultCode: " + mResultCode + ", mResultData: " + mResultData);
         if (mResultCode != 0 && mResultData != null) {
             if(mVirtualDisplay==null){
@@ -265,18 +254,36 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
 
 
      private void prepareVideoEncoder() {
-        mVideoBufferInfo = new MediaCodec.BufferInfo();
+         mVideoBufferInfo = new MediaCodec.BufferInfo();
+
+
         MediaFormat format = MediaFormat.createVideoFormat(mSelectedFormat, mSelectedWidth, mSelectedHeight);
         int frameRate = Config.DEFAULT_VIDEO_FPS;
 
         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+        format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
+        format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel1);
+        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 8192);
+
+
+        //MediaFormat.KEY_COMPLEXITY
+
+
         format.setInteger(MediaFormat.KEY_BIT_RATE, mSelectedBitrate);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_CAPTURE_RATE, frameRate);
-        format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1000000 / frameRate);
+        format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100000 / frameRate);
         format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1); // 1 seconds between I-frames
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10);
+         format.setInteger(MediaFormat.KEY_BITRATE_MODE, BITRATE_MODE_VBR);
+         format.setInteger(MediaFormat.KEY_OPERATING_RATE, frameRate);
 
+         //format.setInteger(MediaFormat.KEY_INTRA_REFRESH_PERIOD, );
+         //format.setInteger(MediaFormat.KEY_LATENCY, 100);
+        /*
+        MediaFormat.KEY_OPERATING_RATE
+         */
+         //MediaFormat.KEY_LATENCY ,MediaFormat.KEY_BITRATE_MODE, MediaFormat.KEY_INTRA_REFRESH_PERIOD, MediaFormat.KEY_OPERATING_RATE;
         try {
             if(mSelectedEncoderName==null){
                 Log.d(TAG, "prepareVideoEncoder: mSelectedEncoderName==null");
@@ -285,9 +292,12 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             Log.w(TAG, "prepareVideoEncoder: using "+ mSelectedEncoderName);
             mVideoEncoder = MediaCodec.createByCodecName(mSelectedEncoderName);
 
+
             mVideoEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+            mCircularBuffer = new CircularBuffer(format, 2000);
             mInputSurface = mVideoEncoder.createInputSurface();
             mVideoEncoder.start();
+            printEncoderFeatures();
         } catch (IOException e) {
             Log.e(TAG, "Failed to initial encoder, e: " + e);
             releaseEncoders();
@@ -302,49 +312,23 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
                 prepareVideoEncoder();
                 break;
             }
+
             int bufferIndex = mVideoEncoder.dequeueOutputBuffer(mVideoBufferInfo, 0);
 
+
             if (bufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                Log.d(TAG, "drainEncoder: INFO_TRY_AGAIN_LATER");
                 break;
             } else if (bufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 Log.d(TAG, "drainEncoder: INFO_OUTPUT_FORMAT_CHANGED");
             } else if (bufferIndex < 0) {
                 // not sure what's going on, ignore it
+                Log.d(TAG, "drainEncoder: bufferIndex < 0");
 
             } else {
-                ByteBuffer encodedData = mVideoEncoder.getOutputBuffer(bufferIndex);
-                if (encodedData == null) {
-                    throw new RuntimeException("couldn't fetch buffer at index " + bufferIndex);
-                }
-                // Fixes playability issues on certain h264 decoders including omxh264dec on raspberry pi
-                // See http://stackoverflow.com/a/26684736/4683709 for explanation
-                //if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                 //   mVideoBufferInfo.size = 0;
-                //}
+                Log.d(TAG, "getOutputBuffer("+bufferIndex+")");
 
-                //Log.d(TAG, "Video buffer offset: " + mVideoBufferInfo.offset + ", size: " + mVideoBufferInfo.size);
-                if (mVideoBufferInfo.size != 0) {
-                    encodedData.position(mVideoBufferInfo.offset);
-                    encodedData.limit(mVideoBufferInfo.offset + mVideoBufferInfo.size);
-                    if (mSocketOutputStream != null) {
-                        try {
-                            byte[] b = new byte[encodedData.remaining()];
-                            encodedData.get(b);
-                            if (mIvfWriter != null) {
-                                mIvfWriter.writeFrame(b, mVideoBufferInfo.presentationTimeUs);
-                            } else {
-                                mSocketOutputStream.write(b);
-                            }
-                        } catch (IOException e) {
-                            Log.d(TAG, "Failed to write data to socket, stop casting");
-                            e.printStackTrace();
-                            stopScreenCapture();
-                            return false;
-                        }
-                    }
-                }
-
-                mVideoEncoder.releaseOutputBuffer(bufferIndex, false);
+                writeSampleData(mVideoEncoder, bufferIndex, mVideoEncoder.getOutputBuffer(bufferIndex), mVideoBufferInfo);
 
                 if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                     break;
@@ -355,8 +339,83 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         mDrainHandler.postDelayed(mDrainEncoderRunnable, 10);
         return true;
     }
+     public void writeSampleData(final MediaCodec mediaCodec, final int bufferIndex,
+                                 final ByteBuffer encodedData, final MediaCodec.BufferInfo bufferInfo) {
+         if (encodedData == null) {
+             throw new RuntimeException("couldn't fetch buffer at index " + bufferIndex);
+         }
+         synchronized (mCircularBufferFence) {
+             int indexTemp = -1;
+             while (indexTemp == -1) {
+                 indexTemp = mCircularBuffer.add(encodedData, bufferInfo); // try to copy the packet to CircularBuffer
+                 if (indexTemp == -1) {
+                     if (mCanIncreaseBuffer) {
+                         synchronized (mCircularBufferChangeSizeFence) {
+                             mCanIncreaseBuffer = mCircularBuffer.increaseSize(); // try to increase interal buffer
+                         }
+                         if (mCanIncreaseBuffer) {
+                             continue;
+                         }
+                     }
+                     Log.w(TAG, "Blocked until free space is made for track before adding package with ts: " + bufferInfo.presentationTimeUs);
+                     try {
+                         mCircularBufferFence.wait(); // block
+                     } catch (InterruptedException e) {
+                         // ignore
+                     }
+                 }
+             }
+         }
+         mediaCodec.releaseOutputBuffer(bufferIndex, false); // return the packet to MediaCodec
 
-    private void stopScreenCapture() {
+         mDrainHandler.post(new Runnable() {
+             // this runs on the Muxer's writing thread
+             @Override
+             public void run() {
+                 synchronized (mCircularBufferChangeSizeFence) {
+                     if (mSocketOutputStream != null) {
+                         try {
+                             mSocketOutputStream.write(mCircularBuffer.getTailChunk(bufferInfo).array());
+                         } catch (IOException e) {
+                             Log.w(TAG, "Failed to write data to socket, stop casting");
+                             e.printStackTrace();
+                             stopScreenCapture();
+                         }
+                     }
+                 }
+                 synchronized (mCircularBufferFence) {
+                     mCircularBuffer.removeTail(); // let CircularBuffer that we are done using the packet
+                     mCircularBufferFence.notifyAll();
+                 }
+             }});
+     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+     long mLastTime = 0;
+     private void logtime(ByteBuffer byteBuffer) {
+
+         long now = System.currentTimeMillis();
+         long diff = now-mLastTime;
+         mLastTime=now;
+         //if(diff>1000)
+
+         Log.d(TAG, "mVideoBufferInfo size"+mVideoBufferInfo.size+" offset="+mVideoBufferInfo.offset+" presentationTimeUs="+mVideoBufferInfo.presentationTimeUs);
+         Log.d(TAG, "encodedData: "+byteBuffer.toString());
+         Log.w(TAG, "write("+ Calendar.getInstance().getTime().toString()+"), diff="+diff);
+     }
+
+     private void stopScreenCapture() {
         dismissNotification();
         releaseEncoders();
         closeSocket();
@@ -387,9 +446,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             mMediaProjection.stop();
             mMediaProjection = null;
         }
-        if (mIvfWriter != null) {
-            mIvfWriter = null;
-        }
         mVideoBufferInfo = null;
     }
 
@@ -406,7 +462,9 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
                     mSocket = new Socket(serverAddr, Config.VIEWER_PORT);
                     mSocketOutputStream = mSocket.getOutputStream();
                     OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
-                    osw.write(String.format(HTTP_MESSAGE_TEMPLATE, mSelectedWidth, mSelectedHeight));
+                    String format =String.format(HTTP_MESSAGE_TEMPLATE, mSelectedWidth, mSelectedHeight);
+                    Log.w(TAG, "format="+format );
+                    osw.write(format);
                     osw.flush();
                     mSocketOutputStream.flush();
                     return;
@@ -455,5 +513,24 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         }
         mSocket = null;
         mSocketOutputStream = null;
+    }
+
+
+    private void printEncoderFeatures(){
+         MediaCodecInfo.CodecCapabilities caps =mVideoEncoder.getCodecInfo().getCapabilitiesForType(DEFAULT_VIDEO_FORMAT);
+        for (int i : caps.colorFormats) {
+            Log.d(TAG, "colorFormats() "+i);
+        }
+        for (MediaCodecInfo.CodecProfileLevel l : caps.profileLevels) {
+            Log.d(TAG, "CodecProfileLevel() level="+l.level+" profile="+l.profile);
+        }
+        Log.d(TAG, "BITRATE_MODE_CBR supported "+ caps.getEncoderCapabilities().isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR));
+        Log.d(TAG, "BITRATE_MODE_CQ supported "+ caps.getEncoderCapabilities().isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CQ));
+        Log.d(TAG, "BITRATE_MODE_VBR supported "+ caps.getEncoderCapabilities().isBitrateModeSupported(BITRATE_MODE_VBR));
+
+        MediaCodecInfo.VideoCapabilities videoCapabilities =caps.getVideoCapabilities();
+        //Log.d(TAG, "getAchievableFrameRatesFor "+mSelectedWidth+"x"+mSelectedHeight+" = "+videoCapabilities.getAchievableFrameRatesFor(mSelectedWidth,mSelectedHeight));
+        Log.d(TAG, "getAchievableFrameRatesFor "+mSelectedWidth+"x"+mSelectedHeight+" = "+videoCapabilities.areSizeAndRateSupported(mSelectedWidth,mSelectedHeight, 60));
+        Log.d(TAG, "complexity "+caps.getEncoderCapabilities().getComplexityRange().getLower()+"  -  "+caps.getEncoderCapabilities().getComplexityRange().getUpper());
     }
 }

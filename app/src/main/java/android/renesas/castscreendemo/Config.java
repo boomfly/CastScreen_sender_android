@@ -31,7 +31,7 @@ public class Config {
     public static final int DEFAULT_SCREEN_HEIGHT = 720;
     public static final int DEFAULT_SCREEN_DPI = 320;
     public static final int DEFAULT_VIDEO_BITRATE = 6144000;
-    public static final int DEFAULT_VIDEO_FPS = 25;
+    public static final int DEFAULT_VIDEO_FPS = 30;
     public static final String DEFAULT_VIDEO_FORMAT = MediaFormat.MIMETYPE_VIDEO_AVC;
 
     public static final int VIRTUAL_DISPLAY_TYPE_SCREENCAST = 0;

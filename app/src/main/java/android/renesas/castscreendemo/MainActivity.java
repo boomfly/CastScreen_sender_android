@@ -121,7 +121,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private DisplayManager mDisplayManager;
     private ListView mDisplayListView;
     private ArrayAdapter<String> mDisplayAdapter;
-    private HashMap<String, String> mDisplayMap;
+    private TextView textStopwatch;
 
     @Override
     public void onDisplayAdded(int i) {
@@ -290,12 +290,15 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         });
         bitrateSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_BITRATE, 3));
         setupDisplayModeSpinner();
+        textStopwatch=(TextView) findViewById(R.id.text_stopwatch);
+
         if(getIntent()!=null && getIntent().getStringExtra(EXTRA_RECEIVER_IP)!=null){
             mReceiverIp = getIntent().getStringExtra(EXTRA_RECEIVER_IP);
             startCaptureScreen();
         }else {
             mReceiverIp = mContext.getSharedPreferences(PREF_COMMON, 0).getString(PREF_KEY_RECEIVER, "");
         }
+
         updateReceiverStatus();
 
     }
@@ -454,9 +457,12 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             mReceiverTextView.setText(R.string.no_receiver);
         }
         if(isConnected){
+            updateStopwatch(true, true);
+
             mReceiverTextView.setBackgroundColor(
                     getColor(android.R.color.holo_green_light));
         } else {
+            updateStopwatch(false, true);
             mReceiverTextView.setBackgroundColor(
                     getColor(android.R.color.background_light));
         }
@@ -466,7 +472,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
 
     private void startCaptureScreen() {
-        //if(mSelectedDisplayMode==Config.VIRTUAL_DISPLAY_TYPE_SCREENCAST){
             Log.d(TAG, "startCaptureScreen: SCREENCAST");
             if (mResultCode != 0 && mResultData != null) {
                 startService();
@@ -477,10 +482,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                         mMediaProjectionManager.createScreenCaptureIntent(),
                         REQUEST_MEDIA_PROJECTION);
             }
-        //}else {
-            //Log.d(TAG, "startCaptureScreen: PRESENTATION");
-            //startService();
-        //}
 
     }
     public void getVirtualDisplayIntent(VDCallback callback){
@@ -492,7 +493,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             callback.intentMPReady(mResultData, mResultCode);
         } else {
             Log.d(TAG, "Requesting confirmation");
-            // This initiates a prompt dialog for the user to confirm screen projection.
             startActivityForResult(
                     mMediaProjectionManager.createScreenCaptureIntent(),
                     REQUEST_VD_INTENT);
@@ -545,10 +545,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                 Log.d(TAG, "Failed to send unregister message to service, e: " + e.toString());
                 e.printStackTrace();
             }
-            /*if(mServiceConnection!=null) {
-                unbindService(mServiceConnection);
-                mServiceConnection=null;
-            }*/
         }
     }
 
@@ -569,10 +565,8 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                     try {
                         discoverUdpSocket.receive(receivePacket);
                         String ip = receivePacket.getAddress().getHostAddress();
-                        //Log.d(TAG, "Receive discover response from " + ip + ", length: " + receivePacket.getLength());
                         if (receivePacket.getLength() > 9) {
                             String respMsg = new String(receivePacket.getData());
-                            //Log.d(TAG, "Discover response message: " + respMsg);
                             try {
                                 JSONObject json = new JSONObject(respMsg);
                                 String name = json.getString("name");
@@ -586,7 +580,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                                         mDiscoverAdapter.addAll(mDiscoverdMap.keySet());
                                     }
                                 });
-                                //Log.d(TAG, "Got receiver name: " + name + ", ip: " + ip + ", width: " + width + ", height: " + height);
                             } catch (JSONException e) {
                                 e.printStackTrace();
                             }
@@ -610,5 +603,14 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     }
     interface VDCallback {
         void intentMPReady(Intent intent, int data);
+    }
+    void updateStopwatch(boolean isVisible, boolean shouldRestart){
+        if(isVisible){
+            textStopwatch.setVisibility(View.VISIBLE);
+            if(shouldRestart){
+
+            }
+        }else             textStopwatch.setVisibility(View.INVISIBLE);
+
     }
 }
