@@ -19,10 +19,6 @@ import java.nio.ByteBuffer;
 
 public class Recorder {
     private static final String TAG = "Recorder";
-    private CircularBuffer mCircularBuffer;
-    private final Object mCircularBufferFence = new Object();
-    private final Object mCircularBufferChangeSizeFence= new Object();
-    private boolean mCanIncreaseBuffer;
 
     private MediaCodec mVideoEncoder;
     private MediaCodec.BufferInfo mVideoBufferInfo;
@@ -62,7 +58,6 @@ public class Recorder {
         mFormat=format;
         try {
             mVideoBufferInfo = new MediaCodec.BufferInfo();
-            mCircularBuffer = new CircularBuffer(format, 2000);
             mVideoEncoder = encoder;
             mVideoEncoder.setCallback(new MediaCodec.Callback() {
                 @Override

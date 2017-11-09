@@ -26,7 +26,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
-import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.media.projection.MediaProjection;
@@ -36,9 +35,10 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.StrictMode;
-import android.util.Log;
+ import android.util.Log;
 import android.view.Surface;
 
+import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -51,7 +51,7 @@ import java.util.ArrayList;
 import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR;
 import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
 
- public class MyCastService extends Service {
+ public class MyCastService extends Service implements CircularEncoder.Callback {
     private final String TAG = "CastService";
     private final int NT_ID_CASTING = 0;
     private Handler mHandler = new Handler(new ServiceHandlerCallback());
@@ -81,11 +81,33 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     private VirtualDisplay mVirtualDisplay;
     private Surface mInputSurface;
      private DisplayManager mDisplayManager;
-     private Recorder mRecorder;
+     //private Recorder mRecorder;
+     CircularEncoder mCircularEncoder;
 
      private ServerSocket mServerSocket;
      private Socket mSocket;
      private OutputStream mSocketOutputStream;
+     private FileDescriptor mFileDescriptor;
+
+     @Override
+     public void fileSaveComplete(int status) {
+         Log.w(TAG, "fileSaveComplete() called with: status = [" + status + "]");
+         if(status!=0) {
+             Log.e(TAG, "fileSaveComplete: error" );
+            // stopScreenCapture();
+         }
+     }
+
+     @Override
+     public void bufferStatus(long totalTimeMsec) {
+         Log.w(TAG, "bufferStatus() called with: totalTimeMsec = [" + totalTimeMsec + "]");
+         mCircularEncoder.frameAvailableSoon();
+         if(totalTimeMsec > 1000) {
+             boolean res= mCircularEncoder.writeChunk();
+             if(!res) Log.e(TAG, "bufferStatus: error" );
+         }
+
+     }
 
      private class ServiceHandlerCallback implements Handler.Callback {
         @Override
@@ -135,7 +157,8 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         mBroadcastIntentFilter = new IntentFilter();
         mBroadcastIntentFilter.addAction(Config.ACTION_STOP_CAST);
         registerReceiver(mBroadcastReceiver, mBroadcastIntentFilter);
-        mRecorder = new Recorder(getApplicationContext(), mHandler);
+
+        //mRecorder = new Recorder(getApplicationContext(), mHandler);
     }
 
     @Override
@@ -215,12 +238,11 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         Log.w(TAG, "startScreenCapture");
         prepareVirtualDisplay();
         showNotification();
-        Log.w(TAG, "startScreenCapture: mDrainEncoderRunnable.run();" );
-        mRecorder.startEncoding(mSocketOutputStream);
+        //mRecorder.startEncoding(mSocketOutputStream);
 
     }
     private void prepareVirtualDisplay(){
-        Log.d(TAG, "mResultCode: " + mResultCode + ", mResultData: " + mResultData);
+        //Log.d(TAG, "mResultCode: " + mResultCode + ", mResultData: " + mResultData);
         if (mResultCode != 0 && mResultData != null) {
             if(mVirtualDisplay==null){
                 mVirtualDisplay = mMediaProjection.createVirtualDisplay(CAST_DISPLAY_NAME, mSelectedWidth,
@@ -251,7 +273,11 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
                 mSelectedEncoderName=Utils.getEncoderName(mSelectedFormat);
             }
             Log.w(TAG, "prepareVideoEncoder: using "+ mSelectedEncoderName);
-            mInputSurface= mRecorder.prepareEncoder(format, MediaCodec.createByCodecName(mSelectedEncoderName));
+            mCircularEncoder = new CircularEncoder(mSocketOutputStream,mSelectedEncoderName,mSelectedWidth, mSelectedHeight, mSelectedBitrate,
+                    frameRate, Config.DEFAULT_BUFFER_LENGTH, this);
+            //mCircularEncoder.saveVideo();
+            mInputSurface= mCircularEncoder.getInputSurface();
+            //mRecorder.prepareEncoder(format, MediaCodec.createByCodecName(mSelectedEncoderName));
         } catch (IOException e) {
             e.printStackTrace();
             stopScreenCapture();
@@ -262,8 +288,9 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
      private void stopScreenCapture() {
          Log.w(TAG, "stopScreenCapture");
         dismissNotification();
-        mRecorder.releaseEncoders();
-        closeSocket();
+        //mRecorder.releaseEncoders();
+        mCircularEncoder.shutdown();
+         closeSocket();
         if(mMediaProjection!=null){
             mMediaProjection.stop();
             mMediaProjection=null;
@@ -321,6 +348,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     }
 
     private void closeSocket(boolean closeServerSocket) {
+        Log.w(TAG, "closeSocket" );
         if (mSocket != null) {
             try {
                 mSocket.close();
