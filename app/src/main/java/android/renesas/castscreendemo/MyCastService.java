@@ -35,10 +35,9 @@ import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.StrictMode;
- import android.util.Log;
+import android.util.Log;
 import android.view.Surface;
 
-import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -75,7 +74,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     private int mSelectedHeight;
     private int mSelectedDpi;
     private int mSelectedBitrate;
-    private int mSelectedDisplayType;
     private String mSelectedEncoderName;
     private MediaProjection mMediaProjection;
     private VirtualDisplay mVirtualDisplay;
@@ -87,16 +85,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
      private ServerSocket mServerSocket;
      private Socket mSocket;
      private OutputStream mSocketOutputStream;
-     private FileDescriptor mFileDescriptor;
 
-     @Override
-     public void fileSaveComplete(int status) {
-         Log.w(TAG, "fileSaveComplete() called with: status = [" + status + "]");
-         if(status!=0) {
-             Log.e(TAG, "fileSaveComplete: error" );
-            // stopScreenCapture();
-         }
-     }
 
      @Override
      public void bufferStatus(long totalTimeMsec) {
@@ -104,7 +93,10 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
          mCircularEncoder.frameAvailableSoon();
          if(totalTimeMsec > 1000) {
              boolean res= mCircularEncoder.writeChunk();
-             if(!res) Log.e(TAG, "bufferStatus: error" );
+             if(!res) {
+                 Log.e(TAG, "bufferStatus: error" );
+                 stopScreenCapture();
+             }
          }
 
      }
@@ -186,7 +178,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         mSelectedHeight = intent.getIntExtra(Config.EXTRA_SCREEN_HEIGHT, Config.DEFAULT_SCREEN_HEIGHT);
         mSelectedDpi = intent.getIntExtra(Config.EXTRA_SCREEN_DPI, Config.DEFAULT_SCREEN_DPI);
         mSelectedBitrate = intent.getIntExtra(Config.EXTRA_VIDEO_BITRATE, Config.DEFAULT_VIDEO_BITRATE);
-        mSelectedDisplayType = intent.getIntExtra(Config.EXTRA_VIRTUAL_DISPLAY_TYPE, Config.DEFAULT_VIRTUAL_DISPLAY_TYPE);
         mSelectedFormat = intent.getStringExtra(Config.EXTRA_VIDEO_FORMAT);
         mSelectedEncoderName = intent.getStringExtra(Config.EXTRA_VIDEO_ENCODER_NAME);
         if (mSelectedFormat == null) {
@@ -238,11 +229,9 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         Log.w(TAG, "startScreenCapture");
         prepareVirtualDisplay();
         showNotification();
-        //mRecorder.startEncoding(mSocketOutputStream);
 
     }
     private void prepareVirtualDisplay(){
-        //Log.d(TAG, "mResultCode: " + mResultCode + ", mResultData: " + mResultData);
         if (mResultCode != 0 && mResultData != null) {
             if(mVirtualDisplay==null){
                 mVirtualDisplay = mMediaProjection.createVirtualDisplay(CAST_DISPLAY_NAME, mSelectedWidth,
@@ -275,9 +264,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
             Log.w(TAG, "prepareVideoEncoder: using "+ mSelectedEncoderName);
             mCircularEncoder = new CircularEncoder(mSocketOutputStream,mSelectedEncoderName,mSelectedWidth, mSelectedHeight, mSelectedBitrate,
                     frameRate, Config.DEFAULT_BUFFER_LENGTH, this);
-            //mCircularEncoder.saveVideo();
             mInputSurface= mCircularEncoder.getInputSurface();
-            //mRecorder.prepareEncoder(format, MediaCodec.createByCodecName(mSelectedEncoderName));
         } catch (IOException e) {
             e.printStackTrace();
             stopScreenCapture();
@@ -288,9 +275,8 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
      private void stopScreenCapture() {
          Log.w(TAG, "stopScreenCapture");
         dismissNotification();
-        //mRecorder.releaseEncoders();
-        mCircularEncoder.shutdown();
          closeSocket();
+         mCircularEncoder.shutdown();
         if(mMediaProjection!=null){
             mMediaProjection.stop();
             mMediaProjection=null;

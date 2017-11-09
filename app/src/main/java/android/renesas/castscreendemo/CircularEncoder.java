@@ -78,14 +78,14 @@ public class CircularEncoder  {
 
             do {
                 ByteBuffer data = mCircularBuffer.getChunk(index, info);
-
                 data.position(info.offset);
                 int size = data.remaining();
-                final byte[] buffer = new byte[size];
-                Log.d(TAG, "will write to array["+size+"]");
+                final byte[] buffer = new byte[info.size];
+                Log.d(TAG, "will write info.offset="+info.offset+" info.size="+ info.size+" data.remaining("+size+")");
 
                 data.get(buffer);
-                mOS.write(buffer);
+
+                mOS.write(buffer, 0,info.size);
                 mOS.flush();
 
 
@@ -110,19 +110,6 @@ public class CircularEncoder  {
      * Callback function definitions.  CircularEncoder caller must provide one.
      */
     public interface Callback {
-        /**
-         * Called some time after saveVideo(), when all data has been written to the
-         * output file.
-         *
-         * @param status Zero means success, nonzero indicates failure.
-         */
-        void fileSaveComplete(int status);
-
-        /**
-         * Called occasionally.
-         *
-         * @param totalTimeMsec Total length, in milliseconds, of buffered video.
-         */
         void bufferStatus(long totalTimeMsec);
     }
 
@@ -146,7 +133,7 @@ public class CircularEncoder  {
         //
         // Since we have to start muxing from a sync frame, we want to ensure that there's
         // room for at least one full GOP in the buffer, preferrably two.
-        this.mOS=outputStream;
+        this.mOS = outputStream;
         if (desiredSpanSec < IFRAME_INTERVAL * 2) {
             throw new RuntimeException("Requested time span is too short: " + desiredSpanSec +
                     " vs. " + (IFRAME_INTERVAL * 2));
@@ -240,21 +227,6 @@ public class CircularEncoder  {
         handler.sendMessage(handler.obtainMessage(
                 EncoderThread.EncoderHandler.MSG_FRAME_AVAILABLE_SOON));
 
-    }
-
-    /**
-     * Initiates saving the currently-buffered frames to the specified output file.  The
-     * data will be written as a .mp4 file.  The call returns immediately.  When the file
-     * save completes, the callback will be notified.
-     * <p>
-     * The file generation is performed on the encoder thread, which means we won't be
-     * draining the output buffers while this runs.  It would be wise to stop submitting
-     * frames during this time.
-     */
-    public void saveVideo() {
-        Handler handler = mSocketThread.getHandler();
-        handler.sendMessage(handler.obtainMessage(
-                SocketThread.SocketHandler.MSG_START, null));
     }
     private static class SocketThread extends Thread {
         private final OutputStream os;
@@ -586,7 +558,7 @@ public class CircularEncoder  {
 
                         mEncBuffer.add(encodedData, mBufferInfo.flags,
                                 mBufferInfo.presentationTimeUs);
-                        mCallback.bufferStatus(mBufferInfo.presentationTimeUs);
+                        mCallback.bufferStatus(mEncBuffer.computeTimeSpanUsec());
                         Log.w(TAG, "computeTimeSpanUsec()="+mEncBuffer.computeTimeSpanUsec() );
 
 
