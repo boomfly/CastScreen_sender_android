@@ -89,8 +89,9 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
 
      @Override
      public void bufferStatus(long totalTimeMsec) {
-         Log.w(TAG, "bufferStatus() called with: totalTimeMsec = [" + totalTimeMsec + "]");
-         mCircularEncoder.frameAvailableSoon();
+         Log.w(TAG, "bufferStatus(" + totalTimeMsec + ")");
+
+
          if(totalTimeMsec > 1000) {
              boolean res= mCircularEncoder.writeChunk();
              if(!res) {
@@ -149,8 +150,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         mBroadcastIntentFilter = new IntentFilter();
         mBroadcastIntentFilter.addAction(Config.ACTION_STOP_CAST);
         registerReceiver(mBroadcastReceiver, mBroadcastIntentFilter);
-
-        //mRecorder = new Recorder(getApplicationContext(), mHandler);
     }
 
     @Override

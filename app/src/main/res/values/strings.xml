@@ -18,9 +18,9 @@
     </string-array>
 
     <string-array name="resolution_options">
-        <item>1920x1080 @ 320</item>
-        <item>1280x720 @ 320</item>
         <item>800x480 @ 160</item>
+        <item>1280x720 @ 320</item>
+        <item>1920x1080 @ 320</item>
     </string-array>
 
     <string-array name="bitrate_options">

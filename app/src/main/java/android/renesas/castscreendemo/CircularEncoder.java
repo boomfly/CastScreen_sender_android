@@ -57,71 +57,61 @@ public class CircularEncoder  {
     private final CircularEncoderBuffer mCircularBuffer;
 
     private OutputStream mOS;
-    private SocketThread mSocketThread;
 
     private EncoderThread mEncoderThread;
     private Surface mInputSurface;
     private MediaCodec mEncoder;
 
 
-    public boolean writeChunk() {
-        Log.d(TAG, "writeChunk() called");
-        int index = mCircularBuffer.getFirstIndex();
-        if (index < 0) {
-            Log.e(TAG, "Unable to get first index");
-            return false;
-        }
+    public synchronized boolean writeChunk() {
+                Log.d(TAG, "writeChunk() called");
+                int index = mCircularBuffer.getFirstIndex();
+                if (index < 0) {
+                    Log.e(TAG, "Unable to get first index");
+                    return false;
+                }
 
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        int result = -1;
-        try {
+                MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                int result = -1;
+                try {
 
-            do {
-                ByteBuffer data = mCircularBuffer.getChunk(index, info);
-                data.position(info.offset);
-                int size = data.remaining();
-                final byte[] buffer = new byte[info.size];
-                Log.d(TAG, "will write info.offset="+info.offset+" info.size="+ info.size+" data.remaining("+size+")");
+                    do {
+                        ByteBuffer data = mCircularBuffer.getChunk(index, info);
+                        data.position(info.offset);
+                        int size = data.remaining();
+                        final byte[] buffer = new byte[info.size];
+                        Log.d(TAG, "will write offset="+info.offset+" info.size="+ info.size+" size("+size+")");
 
-                data.get(buffer);
+                        data.get(buffer);
 
-                mOS.write(buffer, 0,info.size);
-                mOS.flush();
-
-
-                index = mCircularBuffer.getNextIndex(index);
-            } while (index >= 0);
-            result = 0;
-        } catch (Exception ioe) {
-            Log.e(TAG, "muxer failed", ioe);
-            result = 2;
-        } finally {
+                        mOS.write(buffer, 0,info.size);
+                        mOS.flush();
 
 
-        }
+                        index = mCircularBuffer.getNextIndex(index);
+                    } while (index >= 0);
+                    result = 0;
+                } catch (Exception ioe) {
+                    Log.e(TAG, "muxer failed", ioe);
+                    result = 2;
+                } finally {
+                   // this.frameAvailableSoon();
 
-        if (VERBOSE) {
-            Log.d(TAG, "muxer stopped, result=" + result);
-        }
 
-        return result==0;
+                }
+
+                if (VERBOSE) {
+                    Log.d(TAG, "muxer stopped, result=" + result);
+                }
+
+
+
+        return true;
     }
-    /**
-     * Callback function definitions.  CircularEncoder caller must provide one.
-     */
+
     public interface Callback {
         void bufferStatus(long totalTimeMsec);
     }
-
-    /**
-     * Configures encoder, and prepares the input Surface.
-     *
-     * @param width Width of encoded video, in pixels.  Should be a multiple of 16.
-     * @param height Height of encoded video, in pixels.  Usually a multiple of 16 (1080 is ok).
-     * @param bitRate Target bit rate, in bits.
-     * @param frameRate Expected frame rate.
-     * @param desiredSpanSec How many seconds of video we want to have in our buffer at any time.
-     */
     public CircularEncoder(OutputStream outputStream, String encoderName, int width, int height, int bitRate, int frameRate, int desiredSpanSec,
                            Callback cb) throws IOException {
         // The goal is to size the buffer so that we can accumulate N seconds worth of video,
@@ -163,39 +153,23 @@ public class CircularEncoder  {
 
         // Start the encoder thread last.  That way we're sure it can see all of the state
         // we've initialized.
-        mEncoderThread = new EncoderThread(mEncoder, mCircularBuffer, cb,mOS);
+        mEncoderThread = new EncoderThread(mEncoder, mCircularBuffer, cb);
         mEncoderThread.start();
         mEncoderThread.waitUntilReady();
         frameAvailableSoon();
-
-        mSocketThread = new SocketThread(mOS, mCircularBuffer);
-        mSocketThread.start();
-        mSocketThread.waitUntilReady();
     }
 
-    /**
-     * Returns the encoder's input surface.
-     */
     public Surface getInputSurface() {
         return mInputSurface;
     }
 
-    /**
-     * Shuts down the encoder thread, and releases encoder resources.
-     * <p>
-     * Does not return until the encoder thread has stopped.
-     */
     public void shutdown() {
         if (VERBOSE) Log.d(TAG, "releasing encoder objects");
 
         Handler handler = mEncoderThread.getHandler();
         handler.sendMessage(handler.obtainMessage(EncoderThread.EncoderHandler.MSG_SHUTDOWN));
 
-        if (mSocketThread.getHandler() != null) {
-            mSocketThread.getHandler().sendMessage(handler.obtainMessage(EncoderThread.EncoderHandler.MSG_SHUTDOWN));
-        }
         try {
-            //mSocketThread.join();
             mEncoderThread.join();
         } catch (InterruptedException ie) {
             Log.w(TAG, "Encoder thread join() was interrupted", ie);
@@ -208,197 +182,11 @@ public class CircularEncoder  {
         }
     }
 
-    /**
-     * Notifies the encoder thread that a new frame will shortly be provided to the encoder.
-     * <p>
-     * There may or may not yet be data available from the encoder output.  The encoder
-     * has a fair mount of latency due to processing, and it may want to accumulate a
-     * few additional buffers before producing output.  We just need to drain it regularly
-     * to avoid a situation where the producer gets wedged up because there's no room for
-     * additional frames.
-     * <p>
-     * If the caller sends the frame and then notifies us, it could get wedged up.  If it
-     * notifies us first and then sends the frame, we guarantee that the output buffers
-     * were emptied, and it will be impossible for a single additional frame to block
-     * indefinitely.
-     */
     public void frameAvailableSoon() {
         Handler handler = mEncoderThread.getHandler();
         handler.sendMessage(handler.obtainMessage(
                 EncoderThread.EncoderHandler.MSG_FRAME_AVAILABLE_SOON));
 
-    }
-    private static class SocketThread extends Thread {
-        private final OutputStream os;
-
-        private SocketHandler mHandler;
-        private CircularEncoderBuffer mEncBuffer;
-        private int mFrameNum;
-
-        private final Object mLock = new Object();
-        private volatile boolean mReady = false;
-
-        public SocketThread(OutputStream os, CircularEncoderBuffer mEncBuffer) {
-            this.os = os;
-            this.mEncBuffer = mEncBuffer;
-        }
-
-        private static class SocketHandler extends Handler {
-            public static final int MSG_START = 1;
-            public static final int MSG_SHUTDOWN = 2;
-
-            private WeakReference<SocketThread> mWeakSocketThread;
-
-            public SocketHandler(SocketThread st) {
-                mWeakSocketThread = new WeakReference<SocketThread>(st);
-            }
-
-            @Override  // runs on encoder thread
-            public void handleMessage(Message msg) {
-                int what = msg.what;
-                if (VERBOSE) {
-                    Log.w(TAG, "EncoderHandler: what=" + what+": "+msg.toString());
-                }
-
-                SocketThread socketThread = mWeakSocketThread.get();
-                if (socketThread == null) {
-                    Log.w(TAG, "EncoderHandler.handleMessage: weak ref is null");
-                    return;
-                }
-
-                switch (what) {
-                    case MSG_START:
-                        socketThread.frameAvailableSoon();
-                        break;
-                    case MSG_SHUTDOWN:
-                        socketThread.shutdown();
-                        break;
-                    default:
-                        throw new RuntimeException("unknown message " + what);
-                }
-            }
-        }
-
-
-
-
-        @Override
-        public void run() {
-            Looper.prepare();
-            mHandler = new SocketHandler(this);    // must create on encoder thread
-            Log.d(TAG, "socket thread ready");
-            synchronized (mLock) {
-                mReady = true;
-                mLock.notify();    // signal waitUntilReady()
-            }
-
-            Looper.loop();
-
-            synchronized (mLock) {
-                mReady = false;
-                mHandler = null;
-            }
-            Log.d(TAG, "looper quit");
-        }
-
-        /**
-         * Waits until the encoder thread is ready to receive messages.
-         * <p>
-         * Call from non-encoder thread.
-         */
-        public void waitUntilReady() {
-            synchronized (mLock) {
-                while (!mReady) {
-                    try {
-                        mLock.wait();
-                    } catch (InterruptedException ie) { /* not expected */ }
-                }
-            }
-        }
-
-        /**
-         * Returns the Handler used to send messages to the encoder thread.
-         */
-        public SocketHandler getHandler() {
-            synchronized (mLock) {
-                // Confirm ready state.
-                if (!mReady) {
-                    throw new RuntimeException("not ready");
-                }
-            }
-            return mHandler;
-        }
-
-        /**
-         * Drains the encoder output.
-         * <p>
-         * See notes for {@link CircularEncoder#frameAvailableSoon()}.
-         */
-        void frameAvailableSoon() {
-            if (VERBOSE) Log.d(TAG, "frameAvailableSoon");
-            writeToSocket();
-
-            mFrameNum++;
-            if ((mFrameNum % 10) == 0) {        // TODO: should base off frame rate or clock?
-                Log.d(TAG, "frameAvailableSoon: "+mFrameNum);
-            }
-        }
-
-        boolean writeToSocket() {
-            if (VERBOSE) Log.d(TAG, "saveVideo " + os);
-
-            int index = mEncBuffer.getFirstIndex();
-            if (index < 0) {
-                Log.w(TAG, "Unable to get first index");
-                //mCallback.fileSaveComplete(1);
-
-                return false;
-            }
-
-            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-            int result = -1;
-            try {
-
-                do {
-                    ByteBuffer data = mEncBuffer.getChunk(index, info);
-                    if (VERBOSE) {
-                        Log.d(TAG, "SAVE " + index + " flags=0x" + Integer.toHexString(info.flags));
-                    }
-
-                    data.position(info.offset);
-                    int size = data.remaining();
-                    final byte[] buffer = new byte[size];
-                    Log.d(TAG, "will write to array["+size+"]");
-
-                    data.get(buffer);
-                    os.write(buffer, info.offset,size);
-
-
-                    index = mEncBuffer.getNextIndex(index);
-                } while (index >= 0);
-                result = 0;
-            } catch (Exception ioe) {
-                Log.w(TAG, "muxer failed", ioe);
-                result = 2;
-            } finally {
-
-
-            }
-
-            if (VERBOSE) {
-                Log.d(TAG, "muxer stopped, result=" + result);
-            }
-
-            return result==0;
-        }
-
-        /**
-         * Tells the Looper to quit.
-         */
-        void shutdown() {
-            if (VERBOSE) Log.d(TAG, "shutdown");
-            Looper.myLooper().quit();
-        }
     }
 
     /**
@@ -417,7 +205,6 @@ public class CircularEncoder  {
      * thread has been joined.
      */
     private static class EncoderThread extends Thread {
-        private final OutputStream os;
         private MediaCodec mEncoder;
         private MediaFormat mEncodedFormat;
         private MediaCodec.BufferInfo mBufferInfo;
@@ -440,8 +227,7 @@ public class CircularEncoder  {
 
 
         public EncoderThread(MediaCodec mediaCodec, CircularEncoderBuffer encBuffer,
-                Callback callback, OutputStream outputStream) {
-            this.os=outputStream;
+                Callback callback) {
             mEncoder = mediaCodec;
             mEncBuffer = encBuffer;
             mCallback = callback;
@@ -514,7 +300,7 @@ public class CircularEncoder  {
                 int encoderStatus = mEncoder.dequeueOutputBuffer(mBufferInfo, TIMEOUT_USEC);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     // no output available yet
-                    //Log.e(TAG, "drainEncoder: INFO_TRY_AGAIN_LATER");
+                    Log.e(TAG, "drainEncoder: INFO_TRY_AGAIN_LATER");
                     break;
                 } else if (encoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
                     // not expected for an encoder

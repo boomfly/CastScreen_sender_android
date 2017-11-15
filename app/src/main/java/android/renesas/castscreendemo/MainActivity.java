@@ -72,9 +72,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
 
     private static final int[][] RESOLUTION_OPTIONS = {
-            {1920, 1080, 320},
+            {800, 480, 160},
             {1280, 720, 320},
-            {800, 480, 160}
+            {1920, 1080, 320}
     };
 
     private static final int[] BITRATE_OPTIONS = {
@@ -265,10 +265,10 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                 mSelectedWidth = RESOLUTION_OPTIONS[0][0];
                 mSelectedHeight = RESOLUTION_OPTIONS[0][1];
                 mSelectedDpi = RESOLUTION_OPTIONS[0][2];
-                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_RESOLUTION, 1).apply();
+                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_RESOLUTION, 0).apply();
             }
         });
-        resolutionSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_RESOLUTION, 1));
+        resolutionSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_RESOLUTION, 0));
 
         Spinner bitrateSpinner = (Spinner) findViewById(R.id.bitrate_spinner);
         ArrayAdapter<CharSequence> bitrateAdapter = ArrayAdapter.createFromResource(this,

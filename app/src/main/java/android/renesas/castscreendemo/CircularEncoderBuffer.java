@@ -33,7 +33,7 @@ import static android.media.MediaCodec.BUFFER_FLAG_SYNC_FRAME;
  */
 public class CircularEncoderBuffer {
     private static final String TAG = "CircularEncoderBuffer";
-    private static final boolean EXTRA_DEBUG = true;
+    private static final boolean EXTRA_DEBUG = false;
     private static final boolean VERBOSE = true;
 
     // Raw data (e.g. AVC NAL units) held here.
