@@ -39,8 +39,8 @@ import android.os.StrictMode;
 import android.util.Log;
 import android.view.Surface;
 
+import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -50,10 +50,12 @@ import java.util.ArrayList;
 
 import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR;
 import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
+import static android.renesas.castscreendemo.Config.DEFAULT_I_FRAME_INTERVAL;
+import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
 
  public class MyCastService extends Service {
-    private final String TAG = "CastService";
-    private final int NT_ID_CASTING = 0;
+     private final String TAG = "CastService";
+    private final int NT_ID_CASTING = 5353;
     private Handler mHandler = new Handler(new ServiceHandlerCallback());
     private Messenger mMessenger = new Messenger(mHandler);
     private ArrayList<Messenger> mClients = new ArrayList<Messenger>();
@@ -85,7 +87,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
 
      private ServerSocket mServerSocket;
      private Socket mSocket;
-     private OutputStream mSocketOutputStream;
+     private DataOutputStream mSocketOutputStream;
 
      private class ServiceHandlerCallback implements Handler.Callback {
         @Override
@@ -162,7 +164,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         mSelectedWidth = intent.getIntExtra(Config.EXTRA_SCREEN_WIDTH, Config.DEFAULT_SCREEN_WIDTH);
         mSelectedHeight = intent.getIntExtra(Config.EXTRA_SCREEN_HEIGHT, Config.DEFAULT_SCREEN_HEIGHT);
         mSelectedDpi = intent.getIntExtra(Config.EXTRA_SCREEN_DPI, Config.DEFAULT_SCREEN_DPI);
-        mSelectedBitrate = intent.getIntExtra(Config.EXTRA_VIDEO_BITRATE, Config.DEFAULT_VIDEO_BITRATE);
+        mSelectedBitrate = intent.getIntExtra(Config.EXTRA_VIDEO_BITRATE, DEFAULT_VIDEO_BITRATE);
         mSelectedDisplayType = intent.getIntExtra(Config.EXTRA_VIRTUAL_DISPLAY_TYPE, Config.DEFAULT_VIRTUAL_DISPLAY_TYPE);
         mSelectedFormat = intent.getStringExtra(Config.EXTRA_VIDEO_FORMAT);
         mSelectedEncoderName = intent.getStringExtra(Config.EXTRA_VIDEO_ENCODER_NAME);
@@ -193,7 +195,6 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         PendingIntent notificationPendingIntent = PendingIntent.getBroadcast(this, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder builder = new Notification.Builder(this);
         builder.setSmallIcon(R.mipmap.ic_launcher)
-                .setDefaults(Notification.DEFAULT_ALL)
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)
                 .setContentTitle(getString(R.string.app_name))
@@ -242,9 +243,9 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
         format.setInteger(MediaFormat.KEY_BIT_RATE, mSelectedBitrate);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         format.setInteger(MediaFormat.KEY_CAPTURE_RATE, frameRate);
-        format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100000 / frameRate);
+        //format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100000 / frameRate);
         format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10);
+        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
         try {
             if(mSelectedEncoderName==null){
                 Log.d(TAG, "prepareVideoEncoder: mSelectedEncoderName==null");
@@ -287,7 +288,7 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
                     InetAddress serverAddr = InetAddress.getByName(mReceiverIp);
 
                     mSocket = new Socket(serverAddr, Config.VIEWER_PORT);
-                    mSocketOutputStream = mSocket.getOutputStream();
+                    mSocketOutputStream = new DataOutputStream( mSocket.getOutputStream());
                     OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
                     String format =String.format(HTTP_MESSAGE_TEMPLATE, mSelectedWidth, mSelectedHeight);
                     Log.w(TAG, "format="+format );
@@ -321,7 +322,15 @@ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
     }
 
     private void closeSocket(boolean closeServerSocket) {
-        if (mSocket != null) {
+        if (mSocketOutputStream != null) {
+            try {
+                mSocketOutputStream.flush();
+                mSocketOutputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+            if (mSocket != null) {
             try {
                 mSocket.close();
             } catch (IOException e) {

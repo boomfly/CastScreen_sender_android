@@ -19,10 +19,6 @@ import java.nio.ByteBuffer;
 
 public class Recorder {
     private static final String TAG = "Recorder";
-    private CircularBuffer mCircularBuffer;
-    private final Object mCircularBufferFence = new Object();
-    private final Object mCircularBufferChangeSizeFence= new Object();
-    private boolean mCanIncreaseBuffer;
 
     private MediaCodec mVideoEncoder;
     private MediaCodec.BufferInfo mVideoBufferInfo;
@@ -31,6 +27,7 @@ public class Recorder {
     private OutputStream mSocketOutputStream;
     final Intent mStopCastIntent = new Intent(Config.ACTION_STOP_CAST);
     private MediaFormat mFormat;
+    private Runnable mWriteDataRunnable;
 
     public Recorder(Context context, Handler handler) {
         this.mContext=context;
@@ -57,67 +54,62 @@ public class Recorder {
     }
 
 
-    public Surface prepareEncoder(MediaFormat format, MediaCodec encoder) {
+    public Surface prepareEncoder(final MediaFormat format, MediaCodec encoder) {
         Surface inputSurface=null;
         mFormat=format;
         try {
             mVideoBufferInfo = new MediaCodec.BufferInfo();
-            mCircularBuffer = new CircularBuffer(format, 2000);
             mVideoEncoder = encoder;
             mVideoEncoder.setCallback(new MediaCodec.Callback() {
                 @Override
                 public void onInputBufferAvailable(@NonNull MediaCodec codec, int index) {
-                    // fill inputBuffer with valid data
-                    codec.queueInputBuffer(index, mVideoBufferInfo.offset,mVideoBufferInfo.size,
-                            mVideoBufferInfo.presentationTimeUs, mVideoBufferInfo.flags);
+                    Log.w(TAG, "onInputBufferAvailable() [" + index + "]");
                 }
 
                 @Override
                 public void onOutputBufferAvailable(@NonNull MediaCodec codec, final int index, @NonNull MediaCodec.BufferInfo info) {
                     mVideoBufferInfo=info;
                     if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                        Log.d(TAG, "onOutputBufferAvailable: EOS");
+                        Log.e(TAG, "onOutputBufferAvailable: EOS");
                         return;
                     }
-                    Log.d(TAG, "will getOutputBuffer ("+index+")");
-                    mFormat=codec.getOutputFormat(index);
+                    if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                        Log.w(TAG, "onOutputBufferAvailable: BUFFER_FLAG_KEY_FRAME");
+                    }
+                    if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_PARTIAL_FRAME) != 0) {
+                        Log.w(TAG, "onOutputBufferAvailable: BUFFER_FLAG_PARTIAL_FRAME");
+                    }
+                    if ((mVideoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                        Log.w(TAG, "onOutputBufferAvailable: BUFFER_FLAG_CODEC_CONFIG");
+                        mFormat=codec.getOutputFormat(index);
+                    }
+
                     final ByteBuffer data = codec.getOutputBuffer(index);
                     if(data==null) {
-                        throw new NullPointerException();
+                        Log.e(TAG, "onOutputBufferAvailable: no data" );
+                        return;
                     }
-                    mHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            data.position(mVideoBufferInfo.offset);
-                            int size = data.remaining();
-                            final byte[] buffer = new byte[size];
-                            Log.d(TAG, "will write to array["+size+"]");
 
-                            data.get(buffer);
-                            Log.d(TAG, "will releaseOutputBuffer "+index);
+                    data.position(mVideoBufferInfo.offset);
+                    int size = data.remaining();
+                    final byte[] buffer = new byte[size];
+                    data.get(buffer);
+                    mVideoEncoder.releaseOutputBuffer(index, true);
 
-                            mVideoEncoder.releaseOutputBuffer(index, false);
-                            writeSampleData(buffer, mVideoBufferInfo.offset, size);
-                        }
-                    });
-
-
-                    //mVideoEncoder.dequeueOutputBuffer(mVideoBufferInfo,0);
-                }
+                    writeSampleData(buffer, 0, size);
+                    }
 
                 @Override
                 public void onError(@NonNull MediaCodec codec, @NonNull MediaCodec.CodecException e) {
-
                     Log.e(TAG, "onError: code  "+e.getErrorCode()+" "+e.getDiagnosticInfo() );
                 }
 
                 @Override
                 public void onOutputFormatChanged(@NonNull MediaCodec codec, @NonNull MediaFormat format) {
-                    Log.d(TAG, "drainEncoder: INFO_OUTPUT_FORMAT_CHANGED");
+                    Log.e(TAG, " INFO_OUTPUT_FORMAT_CHANGED");
                     mFormat=format;
                 }
             });
-
             mVideoEncoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
             inputSurface = mVideoEncoder.createInputSurface();
             mVideoEncoder.start();
@@ -133,21 +125,17 @@ public class Recorder {
     private boolean drainEncoder() {
         Log.w(TAG, "drainEncoder" );
         mDrainHandler.removeCallbacks(mDrainEncoderRunnable);
-        //mVideoEncoder.dequeueOutputBuffer(mVideoBufferInfo,0);
-
         return true;
     }
 
     private void writeSampleData(final byte[] buffer, final int offset, final int size) {
-        mHandler.post(new Runnable() {
+        mWriteDataRunnable=new Runnable() {
             @Override
             public void run() {
                 if (mSocketOutputStream != null) {
                     try {
-                        Log.d(TAG, "will writeSampleData ("+buffer.length+")");
+
                         mSocketOutputStream.write(buffer, offset, size);
-                        mSocketOutputStream.flush();
-                        Log.d(TAG, "writeSampleData ("+buffer.length+")");
 
                     } catch (IOException e) {
                         Log.e(TAG, "Failed to write data to socket, stop casting",e);
@@ -158,8 +146,9 @@ public class Recorder {
                     Log.e(TAG, "writeSampleData: socket null" );
                     mContext.sendBroadcast(mStopCastIntent);
                 }
-                }
-            });
+            }
+        };
+        mHandler.post(mWriteDataRunnable);
     }
 
 
@@ -167,6 +156,7 @@ public class Recorder {
     public void releaseEncoders() {
         Log.w(TAG, "releaseEncoders: ");
         mDrainHandler.removeCallbacks(mDrainEncoderRunnable);
+        mHandler.removeCallbacks(mWriteDataRunnable);
         if (mVideoEncoder != null) {
             mVideoEncoder.stop();
             mVideoEncoder.release();
