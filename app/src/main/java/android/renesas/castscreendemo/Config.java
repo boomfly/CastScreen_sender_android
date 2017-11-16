@@ -61,4 +61,5 @@ public class Config {
     public static final String EXTRA_PACKAGE_TO_LAUNCH = "package_to_launch";
 
     public static final String ACTION_STOP_CAST = "android.renesas.castscreendemo.ACTION_STOP_CAST";
+    //--es "receiver_ip" "192.168.0.103"
 }
