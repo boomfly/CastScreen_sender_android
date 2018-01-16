@@ -16,6 +16,7 @@
 
 package android.renesas.castscreendemo;
 
+import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 
 public class Config {
@@ -32,8 +33,8 @@ public class Config {
     public static final int DEFAULT_SCREEN_DPI = 320;
     public static final int DEFAULT_VIDEO_BITRATE = 6144000;
     public static final int DEFAULT_I_FRAME_INTERVAL = 1;
-
-    public static final int DEFAULT_VIDEO_FPS = 30;
+    public static final int DEFAULT_VIDEO_BITRATE_MODE = MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR;
+    public static final int DEFAULT_VIDEO_FRAMERATE = 10;
     public static final String DEFAULT_VIDEO_FORMAT = MediaFormat.MIMETYPE_VIDEO_AVC;
 
     public static final int VIRTUAL_DISPLAY_TYPE_SCREENCAST = 0;
@@ -56,9 +57,9 @@ public class Config {
     public static final String EXTRA_SCREEN_DPI = "screen_dpi";
     public static final String EXTRA_VIDEO_FORMAT = "video_format";
     public static final String EXTRA_VIDEO_BITRATE = "video_bitrate";
+    public static final String EXTRA_VIDEO_BITRATE_MODE = "video_bitrate_mode";
+    public static final String EXTRA_VIDEO_FRAMERATE = "video_framerate";
     public static final String EXTRA_VIDEO_ENCODER_NAME = "video_encodername";
-    public static final String EXTRA_VIRTUAL_DISPLAY_TYPE = "virtual_display_type";
-    public static final String EXTRA_PACKAGE_TO_LAUNCH = "package_to_launch";
 
     public static final String ACTION_STOP_CAST = "android.renesas.castscreendemo.ACTION_STOP_CAST";
     //--es "receiver_ip" "192.168.0.103"

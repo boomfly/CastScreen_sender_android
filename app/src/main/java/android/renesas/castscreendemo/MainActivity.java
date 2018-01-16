@@ -22,6 +22,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.hardware.display.DisplayManager;
+import android.media.MediaCodecInfo;
 import android.media.projection.MediaProjectionManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -37,6 +38,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
@@ -54,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 
+import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_FRAMERATE;
 import static android.renesas.castscreendemo.Config.EXTRA_RECEIVER_IP;
 import static android.renesas.castscreendemo.Config.VIRTUAL_DISPLAY_TYPE_PRESENTATION;
 import static android.renesas.castscreendemo.Config.VIRTUAL_DISPLAY_TYPE_SCREENCAST;
@@ -68,7 +71,8 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private static final String PREF_KEY_RECEIVER = "receiver";
     private static final String PREF_KEY_RESOLUTION = "resolution";
     private static final String PREF_KEY_BITRATE = "bitrate";
-    private static final String PREF_KEY_DISPLAY_MODE = "display_mode";
+    private static final String PREF_KEY_BITRATE_MODE = "bitrate_mode";
+    private static final String PREF_KEY_FRAME_RATE = "frame_rate";
 
 
     private static final int[][] RESOLUTION_OPTIONS = {
@@ -82,6 +86,11 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             4096000, // 4 Mbps
             2048000, // 2 Mbps
             1024000 // 1 Mbps
+    };
+
+    private static final int[] BITRATE_MODE_OPTIONS = {
+            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR,
+            MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
     };
 
     private static final int[] DISPLAY_MODE_OPTIONS = {
@@ -109,7 +118,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private int mSelectedHeight = RESOLUTION_OPTIONS[0][1];
     private int mSelectedDpi = RESOLUTION_OPTIONS[0][2];
     private int mSelectedBitrate = BITRATE_OPTIONS[0];
-    private int mSelectedDisplayMode = DISPLAY_MODE_OPTIONS[0];
+    private int mSelectedBitrateMode = BITRATE_MODE_OPTIONS[0];
+    private int mSelectedFrameRate = DEFAULT_VIDEO_FRAMERATE;
+
     private String mSelectedEncoderName;
     private String mReceiverIp = "";
     private DiscoveryTask mDiscoveryTask;
@@ -122,6 +133,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private ListView mDisplayListView;
     private ArrayAdapter<String> mDisplayAdapter;
     private TextView textStopwatch;
+    private EditText mFrameRateEditText;
 
     @Override
     public void onDisplayAdded(int i) {
@@ -230,21 +242,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
 
         mReceiverTextView = (TextView) findViewById(R.id.receiver_textview);
-        /*final Button selectButton = (Button) findViewById(R.id.select_button);
-        selectButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if (packageNameEditText.getText().length() > 0) {
-                    mReceiverIp = packageNameEditText.getText().toString();
-                    Log.d(TAG, "Using ip: " + mReceiverIp);
-                    updateReceiverStatus();
-                    mContext.getSharedPreferences(PREF_COMMON, 0).edit().putString(PREF_KEY_PACKAGE_NAME, mReceiverIp).apply();
-                    mContext.getSharedPreferences(PREF_COMMON, 0).edit().putString(PREF_KEY_RECEIVER, mReceiverIp).apply();
-                }
-            }
-        });*/
-
         setupEncoderSpinner();
+        setupBitrateModeSpinner();
+        setupDefaultFramerate();
 
         Spinner resolutionSpinner = (Spinner) findViewById(R.id.resolution_spinner);
         ArrayAdapter<CharSequence> resolutionAdapter = ArrayAdapter.createFromResource(this,
@@ -262,9 +262,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
             @Override
             public void onNothingSelected(AdapterView<?> adapterView) {
-                mSelectedWidth = RESOLUTION_OPTIONS[0][0];
-                mSelectedHeight = RESOLUTION_OPTIONS[0][1];
-                mSelectedDpi = RESOLUTION_OPTIONS[0][2];
+                mSelectedWidth = RESOLUTION_OPTIONS[1][0];
+                mSelectedHeight = RESOLUTION_OPTIONS[1][1];
+                mSelectedDpi = RESOLUTION_OPTIONS[1][2];
                 mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_RESOLUTION, 1).apply();
             }
         });
@@ -289,7 +289,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             }
         });
         bitrateSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_BITRATE, 3));
-        setupDisplayModeSpinner();
         textStopwatch=(TextView) findViewById(R.id.text_stopwatch);
 
         if(getIntent()!=null && getIntent().getStringExtra(EXTRA_RECEIVER_IP)!=null){
@@ -303,6 +302,33 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
     }
 
+    private void setupBitrateModeSpinner(){
+        Spinner bitrateModeSpinner = (Spinner) findViewById(R.id.bitrate_mode_spinner);
+        ArrayAdapter<CharSequence> bitrateAdapter = ArrayAdapter.createFromResource(this,
+                R.array.bitrate_mode_options, android.R.layout.simple_spinner_item);
+        bitrateAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        bitrateModeSpinner.setAdapter(bitrateAdapter);
+        bitrateModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+                mSelectedBitrateMode = BITRATE_MODE_OPTIONS[i];
+                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_BITRATE_MODE, i).apply();
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> adapterView) {
+                mSelectedBitrateMode = BITRATE_MODE_OPTIONS[0];
+                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_BITRATE_MODE, 0).apply();
+            }
+        });
+        bitrateModeSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_BITRATE_MODE, 0));
+    }
+    private void setupDefaultFramerate(){
+        mFrameRateEditText=findViewById(R.id.frame_rate_edit_text);
+        int defVal = mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_FRAME_RATE, DEFAULT_VIDEO_FRAMERATE);
+        mFrameRateEditText.setText(String.valueOf(defVal));
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -314,31 +340,8 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         }
     }
 
-    private void setupDisplayModeSpinner(){
-        Spinner displayMode = (Spinner) findViewById(R.id.display_mode_spinner);
-        ArrayAdapter<CharSequence> bitrateAdapter = ArrayAdapter.createFromResource(this,
-                R.array.display_mode_options, android.R.layout.simple_spinner_item);
-        bitrateAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        displayMode.setAdapter(bitrateAdapter);
-        displayMode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-                mSelectedDisplayMode = DISPLAY_MODE_OPTIONS[i];
-                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_DISPLAY_MODE, i).apply();
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> adapterView) {
-                mSelectedDisplayMode = DISPLAY_MODE_OPTIONS[0];
-                mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_BITRATE, 0).apply();
-            }
-        });
-        //displayMode.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_DISPLAY_MODE, 0));
-        displayMode.setSelection(1);
-    }
     private void setupEncoderSpinner(){
         Spinner encoderSpinner = (Spinner) findViewById(R.id.encoder_spinner);
-
         mMatchingEncoders=Utils.getCodecs(mSelectedFormat);
         if(mMatchingEncoders==null || mMatchingEncoders.size()==0){
             Log.e(TAG, "No matching encoders found");
@@ -484,20 +487,6 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             }
 
     }
-    public void getVirtualDisplayIntent(VDCallback callback){
-        this.callback=callback;
-        Log.d(TAG, "getVirtualDisplayIntent");
-        if (mResultCode != 0 && mResultData != null) {
-            Log.w(TAG, "intentMPReady"+callback);
-
-            callback.intentMPReady(mResultData, mResultCode);
-        } else {
-            Log.d(TAG, "Requesting confirmation");
-            startActivityForResult(
-                    mMediaProjectionManager.createScreenCaptureIntent(),
-                    REQUEST_VD_INTENT);
-        }
-    }
 
     private void stopScreenCapture() {
         if (mServiceMessenger == null) {
@@ -521,7 +510,10 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             intent.putExtra(Config.EXTRA_SCREEN_HEIGHT, mSelectedHeight);
             intent.putExtra(Config.EXTRA_SCREEN_DPI, mSelectedDpi);
             intent.putExtra(Config.EXTRA_VIDEO_BITRATE, mSelectedBitrate);
-            intent.putExtra(Config.EXTRA_VIRTUAL_DISPLAY_TYPE, mSelectedDisplayMode);
+            intent.putExtra(Config.EXTRA_VIDEO_BITRATE_MODE, mSelectedBitrateMode);
+            int frameRate = Integer.parseInt(mFrameRateEditText.getText().toString());
+            mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_FRAME_RATE, frameRate).apply();
+            intent.putExtra(Config.EXTRA_VIDEO_FRAMERATE, frameRate);
             intent.putExtra(Config.EXTRA_VIDEO_ENCODER_NAME, mSelectedEncoderName);
 
 

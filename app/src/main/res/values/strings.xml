@@ -29,4 +29,10 @@
         <item>2 Mbps</item>
         <item>1 Mbps</item>
     </string-array>
+
+
+    <string-array name="bitrate_mode_options">
+        <item>VBR</item>
+        <item>CBR</item>
+    </string-array>
 </resources>

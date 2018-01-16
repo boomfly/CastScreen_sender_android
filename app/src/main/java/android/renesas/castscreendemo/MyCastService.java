@@ -17,41 +17,43 @@
 package android.renesas.castscreendemo;
 
  import android.app.Notification;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.app.Service;
-import android.content.BroadcastReceiver;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.hardware.display.DisplayManager;
-import android.hardware.display.VirtualDisplay;
-import android.media.MediaCodec;
-import android.media.MediaCodecInfo;
-import android.media.MediaFormat;
-import android.media.projection.MediaProjection;
-import android.media.projection.MediaProjectionManager;
-import android.os.Handler;
-import android.os.IBinder;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.StrictMode;
-import android.util.Log;
-import android.view.Surface;
+ import android.app.NotificationManager;
+ import android.app.PendingIntent;
+ import android.app.Service;
+ import android.content.BroadcastReceiver;
+ import android.content.Context;
+ import android.content.Intent;
+ import android.content.IntentFilter;
+ import android.hardware.display.DisplayManager;
+ import android.hardware.display.VirtualDisplay;
+ import android.media.MediaCodec;
+ import android.media.MediaCodecInfo;
+ import android.media.MediaFormat;
+ import android.media.projection.MediaProjection;
+ import android.media.projection.MediaProjectionManager;
+ import android.os.Handler;
+ import android.os.IBinder;
+ import android.os.Message;
+ import android.os.Messenger;
+ import android.os.StrictMode;
+ import android.util.Log;
+ import android.view.Surface;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
+ import java.io.DataOutputStream;
+ import java.io.IOException;
+ import java.io.OutputStreamWriter;
+ import java.net.InetAddress;
+ import java.net.ServerSocket;
+ import java.net.Socket;
+ import java.net.UnknownHostException;
+ import java.util.ArrayList;
 
-import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR;
-import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
-import static android.renesas.castscreendemo.Config.DEFAULT_I_FRAME_INTERVAL;
-import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
+ import static android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR;
+ import static android.renesas.castscreendemo.Config.CAST_DISPLAY_NAME;
+ import static android.renesas.castscreendemo.Config.DEFAULT_I_FRAME_INTERVAL;
+ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
+ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE_MODE;
+ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_FRAMERATE;
 
  public class MyCastService extends Service {
      private final String TAG = "CastService";
@@ -77,7 +79,8 @@ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
     private int mSelectedHeight;
     private int mSelectedDpi;
     private int mSelectedBitrate;
-    private int mSelectedDisplayType;
+    private int mSelectedBitrateMode;
+    private int mSelectedFrameRate;
     private String mSelectedEncoderName;
     private MediaProjection mMediaProjection;
     private VirtualDisplay mVirtualDisplay;
@@ -165,7 +168,8 @@ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
         mSelectedHeight = intent.getIntExtra(Config.EXTRA_SCREEN_HEIGHT, Config.DEFAULT_SCREEN_HEIGHT);
         mSelectedDpi = intent.getIntExtra(Config.EXTRA_SCREEN_DPI, Config.DEFAULT_SCREEN_DPI);
         mSelectedBitrate = intent.getIntExtra(Config.EXTRA_VIDEO_BITRATE, DEFAULT_VIDEO_BITRATE);
-        mSelectedDisplayType = intent.getIntExtra(Config.EXTRA_VIRTUAL_DISPLAY_TYPE, Config.DEFAULT_VIRTUAL_DISPLAY_TYPE);
+        mSelectedBitrateMode = intent.getIntExtra(Config.EXTRA_VIDEO_BITRATE_MODE, DEFAULT_VIDEO_BITRATE_MODE);
+        mSelectedFrameRate = intent.getIntExtra(Config.EXTRA_VIDEO_FRAMERATE, DEFAULT_VIDEO_FRAMERATE);
         mSelectedFormat = intent.getStringExtra(Config.EXTRA_VIDEO_FORMAT);
         mSelectedEncoderName = intent.getStringExtra(Config.EXTRA_VIDEO_ENCODER_NAME);
         if (mSelectedFormat == null) {
@@ -235,17 +239,7 @@ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
 
 
      private void prepareVideoEncoder() {
-        MediaFormat format = MediaFormat.createVideoFormat(mSelectedFormat, mSelectedWidth, mSelectedHeight);
-        int frameRate = Config.DEFAULT_VIDEO_FPS;
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-        format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel1);
-        format.setInteger(MediaFormat.KEY_BIT_RATE, mSelectedBitrate);
-        format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
-        format.setInteger(MediaFormat.KEY_CAPTURE_RATE, frameRate);
-        //format.setInteger(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100000 / frameRate);
-        format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
-        format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
+        MediaFormat format = getVideoFormat();
         try {
             if(mSelectedEncoderName==null){
                 Log.d(TAG, "prepareVideoEncoder: mSelectedEncoderName==null");
@@ -257,6 +251,24 @@ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_BITRATE;
             e.printStackTrace();
             stopScreenCapture();
         }
+     }
+
+     private MediaFormat getVideoFormat() {
+         MediaFormat format = MediaFormat.createVideoFormat(mSelectedFormat, mSelectedWidth, mSelectedHeight);
+
+         format.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
+         format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
+         format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel1);
+         format.setInteger(MediaFormat.KEY_BIT_RATE, mSelectedBitrate);
+         Log.w(TAG, "getVideoFormat: bitrate="+mSelectedBitrate );
+         format.setInteger(MediaFormat.KEY_FRAME_RATE, mSelectedFrameRate);
+         format.setInteger(MediaFormat.KEY_CAPTURE_RATE, mSelectedFrameRate);
+         format.setInteger(MediaFormat.KEY_BITRATE_MODE, mSelectedBitrateMode);
+         format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
+         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
+         //format.setInteger(MediaFormat.KEY_PRIORITY, 0);
+
+        return format;
      }
 
 
