@@ -16,6 +16,7 @@
 
 package android.renesas.castscreendemo;
 
+ import android.annotation.SuppressLint;
  import android.app.Notification;
  import android.app.NotificationManager;
  import android.app.PendingIntent;
@@ -67,6 +68,9 @@ package android.renesas.castscreendemo;
             "Connection: close\r\n" +
             "X-WIDTH: %1$d\r\n" +
             "X-HEIGHT: %2$d\r\n" +
+            "FPS: %3$d\r\n" +
+            "BITRATE: %4$d\r\n" +
+            "ENCODER: %5$s\r\n" +
             "\r\n";
 
 
@@ -302,7 +306,14 @@ package android.renesas.castscreendemo;
                     mSocket = new Socket(serverAddr, Config.VIEWER_PORT);
                     mSocketOutputStream = new DataOutputStream( mSocket.getOutputStream());
                     OutputStreamWriter osw = new OutputStreamWriter(mSocketOutputStream);
-                    String format =String.format(HTTP_MESSAGE_TEMPLATE, mSelectedWidth, mSelectedHeight);
+                    @SuppressLint("DefaultLocale")
+                    String format =String.format(HTTP_MESSAGE_TEMPLATE,
+                            mSelectedWidth,
+                            mSelectedHeight,
+                            mSelectedFrameRate,
+                            mSelectedBitrate,
+                            mSelectedEncoderName
+                    );
                     Log.w(TAG, "format="+format );
                     osw.write(format);
                     osw.flush();

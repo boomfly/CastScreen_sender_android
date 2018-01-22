@@ -82,6 +82,8 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     };
 
     private static final int[] BITRATE_OPTIONS = {
+            20480000, // 20 Mbps
+            10240000, // 10 Mbps
             6144000, // 6 Mbps
             4096000, // 4 Mbps
             2048000, // 2 Mbps
@@ -119,7 +121,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private int mSelectedDpi = RESOLUTION_OPTIONS[0][2];
     private int mSelectedBitrate = BITRATE_OPTIONS[0];
     private int mSelectedBitrateMode = BITRATE_MODE_OPTIONS[0];
-    private int mSelectedFrameRate = DEFAULT_VIDEO_FRAMERATE;
+    private int mSelectedFramerate = DEFAULT_VIDEO_FRAMERATE;
 
     private String mSelectedEncoderName;
     private String mReceiverIp = "";
@@ -288,7 +290,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
                 mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_BITRATE, 0).apply();
             }
         });
-        bitrateSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_BITRATE, 3));
+        bitrateSpinner.setSelection(mContext.getSharedPreferences(PREF_COMMON, 0).getInt(PREF_KEY_BITRATE, 0));
         textStopwatch=(TextView) findViewById(R.id.text_stopwatch);
 
         if(getIntent()!=null && getIntent().getStringExtra(EXTRA_RECEIVER_IP)!=null){
@@ -511,11 +513,11 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             intent.putExtra(Config.EXTRA_SCREEN_DPI, mSelectedDpi);
             intent.putExtra(Config.EXTRA_VIDEO_BITRATE, mSelectedBitrate);
             intent.putExtra(Config.EXTRA_VIDEO_BITRATE_MODE, mSelectedBitrateMode);
-            int frameRate = Integer.parseInt(mFrameRateEditText.getText().toString());
-            mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_FRAME_RATE, frameRate).apply();
-            intent.putExtra(Config.EXTRA_VIDEO_FRAMERATE, frameRate);
+            mSelectedFramerate = Integer.parseInt(mFrameRateEditText.getText().toString());
+            mContext.getSharedPreferences(PREF_COMMON, 0).edit().putInt(PREF_KEY_FRAME_RATE, mSelectedFramerate).apply();
+            intent.putExtra(Config.EXTRA_VIDEO_FRAMERATE, mSelectedFramerate);
             intent.putExtra(Config.EXTRA_VIDEO_ENCODER_NAME, mSelectedEncoderName);
-
+            logCurrentConfig();
 
             Log.d(TAG, "===== start service =====");
             startService(intent);
@@ -525,6 +527,20 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             startService(intent);
             bindService(intent, mServiceConnection, Context.BIND_AUTO_CREATE);
         }
+    }
+
+    private void logCurrentConfig() {
+        Log.w(TAG, "logCurrentConfig {");
+        Log.w(TAG, "\tReceiverIp = "+mReceiverIp);
+        Log.w(TAG, "\tFormat = "+mSelectedFormat);
+        Log.w(TAG, "\tWidth = "+mSelectedWidth);
+        Log.w(TAG, "\tHeight = "+mSelectedHeight);
+        Log.w(TAG, "\tDpi = "+mSelectedDpi);
+        Log.w(TAG, "\tEncoderName = "+mSelectedEncoderName);
+        Log.w(TAG, "\tBitrateMode = "+mSelectedBitrateMode);
+        Log.w(TAG, "\tBitrate = "+mSelectedBitrate);
+        Log.w(TAG, "\tFramerate = "+mSelectedFramerate);
+        Log.w(TAG, "}");
     }
 
     private void doUnbindService() {
