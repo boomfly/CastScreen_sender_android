@@ -83,7 +83,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
     private static final int[] BITRATE_OPTIONS = {
             20480000, // 20 Mbps
-            10240000, // 10 Mbps
+            15360000, // 15 Mbps
             6144000, // 6 Mbps
             4096000, // 4 Mbps
             2048000, // 2 Mbps
@@ -139,6 +139,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
     @Override
     public void onDisplayAdded(int i) {
+
         updateDisplaysList();
 
     }
@@ -156,7 +157,9 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private void updateDisplaysList(){
         ArrayList<String> list=new ArrayList<>();
         for(Display d: mDisplayManager.getDisplays()){
-            list.add("id: "+d.getDisplayId()+", " +d.getName()+", state="+d.getState()+" flags="+d.getFlags());
+            String displayInfo = "id: "+d.getDisplayId()+", " +d.getName()+", state="+d.getState()+" flags="+d.getFlags();
+            Log.w(TAG, "updateDisplaysList: "+displayInfo);
+            list.add(displayInfo);
         }
         mDisplayAdapter.clear();
         mDisplayAdapter.addAll(list);
@@ -190,6 +193,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
             }finally {
                 updateReceiverStatus();
             }
+
         }
 
         @Override
@@ -205,7 +209,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_cast);
+        setContentView(R.layout.activity_main);
 
         if (savedInstanceState != null && mServiceConnection!=null) {
             mResultCode = savedInstanceState.getInt(STATE_RESULT_CODE);
@@ -379,7 +383,7 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         // start discovery task
         mDiscoveryTask = new DiscoveryTask();
         mDiscoveryTask.execute();
-        mDisplayManager.registerDisplayListener(this, new Handler());
+        mDisplayManager.registerDisplayListener(this, null);
 
     }
 
