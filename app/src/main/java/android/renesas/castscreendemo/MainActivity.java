@@ -30,6 +30,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.Messenger;
+import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Log;
 import android.view.Display;
@@ -60,6 +61,7 @@ import static android.renesas.castscreendemo.Config.DEFAULT_VIDEO_FRAMERATE;
 import static android.renesas.castscreendemo.Config.EXTRA_RECEIVER_IP;
 import static android.renesas.castscreendemo.Config.VIRTUAL_DISPLAY_TYPE_PRESENTATION;
 import static android.renesas.castscreendemo.Config.VIRTUAL_DISPLAY_TYPE_SCREENCAST;
+import static android.view.Display.STATE_OFF;
 
 
 public class MainActivity extends Activity implements DisplayManager.DisplayListener {
@@ -157,13 +159,39 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
     private void updateDisplaysList(){
         ArrayList<String> list=new ArrayList<>();
         for(Display d: mDisplayManager.getDisplays()){
-            String displayInfo = "id: "+d.getDisplayId()+", " +d.getName()+", state="+d.getState()+" flags="+d.getFlags();
+            if(d.getState()==Display.STATE_OFF)continue;
+            String displayInfo = getDisplayInfoString(d);
             Log.w(TAG, "updateDisplaysList: "+displayInfo);
             list.add(displayInfo);
         }
         mDisplayAdapter.clear();
         mDisplayAdapter.addAll(list);
         mDisplayAdapter.notifyDataSetChanged();
+    }
+
+    private String getDisplayInfoString(Display d) {
+        String s ="id: "+d.getDisplayId()+", " +d.getName()+": ";
+        switch (d.getState()){
+            case STATE_OFF:
+                s+="OFF";
+                break;
+            case Display.STATE_ON:
+                s+="ON";
+                break;
+            case Display.STATE_DOZE:
+                s+="DOZE";
+                break;
+            case Display.STATE_DOZE_SUSPEND:
+                s+="DOZE_SUSPEND";
+                break;
+            case Display.STATE_UNKNOWN:
+                s+="UNKNOWN";
+                break;
+            case Display.STATE_VR:
+                s+="VR";
+                break;
+        }
+        return s;
     }
 
 
@@ -306,6 +334,11 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
 
         updateReceiverStatus();
 
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState, PersistableBundle outPersistentState) {
+        super.onSaveInstanceState(outState, outPersistentState);
     }
 
     private void setupBitrateModeSpinner(){
@@ -500,12 +533,15 @@ public class MainActivity extends Activity implements DisplayManager.DisplayList
         }
         final Intent stopCastIntent = new Intent(Config.ACTION_STOP_CAST);
         sendBroadcast(stopCastIntent);
+
         doUnbindService();
+
         isConnected=false;
         updateReceiverStatus();
     }
 
     private void startService() {
+
         if (mReceiverIp != null) {
             Intent intent = new Intent(this, MyCastService.class);
             intent.putExtra(Config.EXTRA_RESULT_CODE, mResultCode);
